@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:50847cd03621b5563cb42b343cd43336456e66d9e503646e5f0cebdc2f18d9d1"
+content_hash = "sha256:34ce65b0c987992fcfb93c55f21e50cc3b9b7f6cad5b5890bcd55374624d2576"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -238,6 +238,36 @@ dependencies = [
 files = [
     {file = "fastapi-0.115.5-py3-none-any.whl", hash = "sha256:596b95adbe1474da47049e802f9a65ab2ffa9c2b07e7efee70eb8a66c9f2f796"},
     {file = "fastapi-0.115.5.tar.gz", hash = "sha256:0e7a4d0dc0d01c68df21887cce0945e72d3c48b9f4f79dfe7a7d53aa08fbb289"},
+]
+
+[[package]]
+name = "fastcrc"
+version = "0.3.2"
+requires_python = ">=3.7"
+summary = "A hyper-fast Python module for computing CRC(8, 16, 32, 64) checksum"
+groups = ["default"]
+files = [
+    {file = "fastcrc-0.3.2-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:5333403aaa300a6dd9a09be57108fe097bf3999c1beefee290268fe29b969770"},
+    {file = "fastcrc-0.3.2-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:9e440928e38295e34cc3d10c0dd60c636f29f87b3f75eb712c655f24b234783e"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:53b66d2a2caf5fa39d2bdfa814b08a879812cbcf8659b1606c37c6c0063ab4dc"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:047ade898642d182f98ab91c2835a261ea347c65fea9b4cbacf9c2831ae0af9e"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:ea795a0d5561bdfe45648d7f0a5423c2a4aca9fa7bf11545185551ef6df2174d"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:22a4983946593f76a573992ba92a207ddd9792b4797575ee1ae9757ddeda40f1"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3b0253a6408ffec884876bbfd7a0e602da1cba7f31ef63efcac3fb4600ec1f93"},
+    {file = "fastcrc-0.3.2-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:854bbc2633a94ac5673a65d2793dc952d4b795357927997fa9cf6b941f7f52ac"},
+    {file = "fastcrc-0.3.2-cp312-none-win32.whl", hash = "sha256:f47c3b4642683e653a4bb2dfb97049af60af57869298bd45b0a229be2816946f"},
+    {file = "fastcrc-0.3.2-cp312-none-win_amd64.whl", hash = "sha256:858fd01ab7996cdc1801f4845273e25e81d66a1d64a6aa79f8acb0a77a5ffc68"},
+    {file = "fastcrc-0.3.2-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:b848835c2521ad5a96413ce310243c325a911aad92860aa427afb19f28493657"},
+    {file = "fastcrc-0.3.2-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:e2d723fdf5df4444ed8ab1d3b8478d71162397243bbd26bd82f1e844a5ae4b88"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4ec03598c258ab5267ed1303988d5d34f8c8d02839409bf0be04deb91f51a7d1"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:d923e9ea11ee35d129dc742ef76b5ab86e489cf6b7f404e02e413c4b98e4c838"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:f0c8c968237d580886e796da52c7d026e318652e60e0106d9557e2a25265c030"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:4dd95f209a575edae4f223c55b508b43c18d1e4ffdb0262fcd6bc55be355a96a"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9465678d0fe17e4ccd63b13aadefc550521f7bd1ba7b176b5b7e118952f0097f"},
+    {file = "fastcrc-0.3.2-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:bf3aca3a8d4c369bebaf601831b25917a0808dc7cf0d3060955c97d2a72951ae"},
+    {file = "fastcrc-0.3.2-cp313-none-win32.whl", hash = "sha256:86f3c9e5844e5ffbbec1c17f059198a9b3f36ec3061f1128076ae2eb625101a3"},
+    {file = "fastcrc-0.3.2-cp313-none-win_amd64.whl", hash = "sha256:a5b68367c9a837773ad1dc98ae66adb4d097a58430665a21bff548982db8f3b9"},
+    {file = "fastcrc-0.3.2.tar.gz", hash = "sha256:22362bb54e1bafc4f3e35544e40162481b2822c48ede1f5c2784820afad2c561"},
 ]
 
 [[package]]
