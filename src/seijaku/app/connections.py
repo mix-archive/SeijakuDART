@@ -1,0 +1,2 @@
+class ConnectionsManager:
+    pass
