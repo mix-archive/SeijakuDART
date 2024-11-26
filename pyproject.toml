@@ -9,6 +9,10 @@ dependencies = [
     "cryptography>=43.0.3",
     "fastcrc>=0.3.2",
     "anyio>=4.6.2.post1",
+    "pydantic-settings>=2.6.1",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "sqlalchemy-utils[encrypted,password]>=0.41.2",
+    "passlib[argon2]>=1.7.4",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
