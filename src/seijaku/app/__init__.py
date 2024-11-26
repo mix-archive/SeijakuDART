@@ -5,9 +5,10 @@ from importlib import metadata
 
 from fastapi import FastAPI
 
-from seijaku.app.config import settings_dependency
-from seijaku.app.db import session_manager_dependency
 from seijaku.client.protocol import ControlServerProtocol
+
+from .config import settings_dependency
+from .db import session_manager_dependency
 
 logger = logging.getLogger(__name__)
 
