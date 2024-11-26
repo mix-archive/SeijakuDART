@@ -17,6 +17,8 @@
     "files.encoding": "utf8",
     "cSpell.words": [
         "decryptor",
-        "encryptor"
+        "encryptor",
+        "seijaku",
+        "sessionmaker"
     ],
 }
