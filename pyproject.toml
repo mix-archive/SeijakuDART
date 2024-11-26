@@ -2,23 +2,58 @@
 name = "seijaku"
 version = "0.1.0"
 description = "A C2 which can be easily countered and compromised. (THUDART commission)"
-authors = [
-    {name = "Mix", email = "32300164+mnixry@users.noreply.github.com"},
+authors = [{ name = "Mix", email = "32300164+mnixry@users.noreply.github.com" }]
+dependencies = [
+    "fastapi[standard]>=0.115.5",
+    "rich>=13.9.4",
+    "cryptography>=43.0.3",
 ]
-dependencies = ["fastapi[standard]>=0.115.5", "rich>=13.9.4"]
 requires-python = ">=3.12"
 readme = "README.md"
-license = {text = "AGPL-3.0-or-later"}
+license = { text = "AGPL-3.0-or-later" }
 
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
-
 [tool.pdm]
 distribution = true
 
 [dependency-groups]
-dev = [
-    "ruff>=0.8.0",
+dev = ["ruff>=0.8.0"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+
+[tool.ruff]
+lint.select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "A",     # flake8-builtins
+    "ASYNC", # flake8-async
+    "B",     # flake8-bugbear
+    "S",     # flake8-bandit
+    "C4",    # flake8-comprehensions
+    "G",     # flake8-logging-format 
+    "LOG",   # flake8-logging
+    "PT",    # flake8-pytest-style
+    "PYI",   # flake8-pyi
+    "Q",     # flake8-quotes
+    "RSE",   # flake8-raise
+    "SIM",   # flake8-simplify
+    "SLF",   # flake8-self
+    "T10",   # flake8-debugger
+    "T20",   # flake8-print
+    "F",     # Pyflakes
+    "TRY",   # tryceratops
+    "I",     # isort
+    "UP",    # pyupgrade
+    "C90",   # complexity
+    "N",     # naming
+    "RUF",   # Ruff-specific rules
 ]
+lint.ignore = [
+    "B008",   # Do not perform calls in argument defaults
+    "TRY003", # Avoid specifying long messages outside the exception class
+]
+target-version = "py312"
