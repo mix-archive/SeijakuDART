@@ -5,9 +5,9 @@ from importlib import metadata
 
 from fastapi import FastAPI
 
-from seijaku.client.protocol import ControlServerProtocol
-
+from ..client.protocol import ControlServerProtocol
 from .config import settings_dependency
+from .connections import ClientControlProtocol, connections_manager_factory
 from .db import session_manager_dependency
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings = settings_dependency()
     session_manager = session_manager_dependency()
+    connections_manager = connections_manager_factory(session_manager)
+    await connections_manager.init_encryption_keys()
     server = await asyncio.get_running_loop().create_server(
-        asyncio.Protocol,
+        lambda: ControlServerProtocol(
+            protocol_factory=lambda: ClientControlProtocol(connections_manager),
+            list_encryption_keys=connections_manager.list_encryption_keys,
+        ),
         settings.c2_host,
         settings.c2_port,
         reuse_address=True,
