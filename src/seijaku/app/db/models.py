@@ -39,22 +39,19 @@ class GUID(sa.TypeDecorator):
                 return uuid_hex
             case None:
                 return value
-            case _:
-                return f"{uuid.UUID(value):.32x}"
+        return uuid.UUID(value).hex
 
     def process_result_value(self, value, dialect):
-        match value:
-            case None | uuid.UUID:
-                return value
-            case _:
-                return uuid.UUID(value)
+        if value is None or isinstance(value, uuid.UUID):
+            return value
+        return uuid.UUID(value)
 
 
 class Clients(Base):
     __tablename__ = "clients"
 
-    id_: Mapped[GUID] = mapped_column(
-        primary_key=True, default=lambda: str(uuid.uuid4())
+    id_: Mapped[uuid.UUID] = mapped_column(
+        GUID, primary_key=True, default=lambda: str(uuid.uuid4())
     )
     client_name: Mapped[str] = mapped_column(nullable=False, index=True, unique=True)
     encrypt_key: Mapped[str] = mapped_column(
