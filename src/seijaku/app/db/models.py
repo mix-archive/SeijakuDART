@@ -30,6 +30,8 @@ class GUID(sa.TypeDecorator):
 
     impl = sa.CHAR
 
+    cache_ok = True
+
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
             return dialect.type_descriptor(sa.UUID())
