@@ -13,6 +13,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "sqlalchemy-utils[encrypted,password]>=0.41.2",
     "passlib[argon2]>=1.7.4",
+    "pyjwt>=2.10.0",
+    "aiosqlite>=0.20.0",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
