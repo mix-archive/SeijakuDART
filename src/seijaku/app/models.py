@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from .auth import SessionData
@@ -24,3 +27,11 @@ class SessionCreationResponse(BaseSchema):
 
 class ClientCreation(BaseSchema):
     client_name: str
+
+
+class ClientResponse(BaseSchema):
+    id_: uuid.UUID
+    client_name: str
+    last_seen: datetime | None
+    last_from: str | None
+    owner_id: int

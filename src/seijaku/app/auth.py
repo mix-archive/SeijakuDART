@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
 from .config import SettingsDependency
 from .db.models import UserRoles, Users
@@ -68,6 +68,21 @@ async def authentication_dependency(
 
 
 UserSessionDependency = Annotated[SessionData, Depends(authentication_dependency)]
+
+
+_cached_role_dependencies = {}
+
+
+def require_role(role: UserRoles):
+    if role not in _cached_role_dependencies:
+
+        async def dependency(user: UserSessionDependency):
+            if user.role > role:
+                raise HTTPException(HTTP_403_FORBIDDEN, "Insufficient role")
+            return user
+
+        _cached_role_dependencies[role] = Depends(dependency)
+    return _cached_role_dependencies[role]
 
 
 async def login(
