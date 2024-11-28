@@ -28,8 +28,8 @@ async def lifespan(app: FastAPI):
             protocol_factory=lambda: ClientControlProtocol(connections_manager),
             list_encryption_keys=connections_manager.list_encryption_keys,
         ),
-        settings.c2_host,
-        settings.c2_port,
+        str(settings.c2_host) if settings.c2_host else None,
+        int(settings.c2_port),
         reuse_address=True,
         reuse_port=True,
     )
