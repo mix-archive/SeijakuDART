@@ -164,7 +164,7 @@ class ControlServerProtocol(asyncio.Protocol):
             self.sub_protocol.connection_lost(None)
 
         if exc:
-            logger.warning("Connection lost from %s: %s", self.peername, exc)
+            logger.exception("Connection lost from %s:", self.peername, exc_info=exc)
         else:
             logger.info("Connection lost from %s", self.peername)
 
@@ -176,15 +176,36 @@ class ControlServerProtocol(asyncio.Protocol):
 class ControlClientTransport(asyncio.WriteTransport):
     protocol: ControlServerProtocol
 
+    def is_closing(self) -> bool:
+        return self.protocol.transport.is_closing()
+
+    def close(self) -> None:
+        return self.protocol.transport.close()
+
     def set_protocol(self, protocol: asyncio.BaseProtocol):
         self.protocol = cast(ControlServerProtocol, protocol)
 
     def get_protocol(self) -> asyncio.BaseProtocol:
         return self.protocol
 
+    def set_write_buffer_limits(self, high: int | None = None, low: int | None = None):
+        return self.protocol.transport.set_write_buffer_limits(high, low)
+
+    def get_write_buffer_size(self) -> int:
+        return self.protocol.transport.get_write_buffer_size()
+
+    def get_write_buffer_limits(self) -> tuple[int, int]:
+        return self.protocol.transport.get_write_buffer_limits()
+
     def write(self, data) -> None:
         encrypted = self.protocol.encryptor.update(bytes(data))
         return self.protocol.transport.write(encrypted)
 
-    def __getattr__(self, name: str):
-        return getattr(self.protocol.transport, name)
+    def write_eof(self) -> None:
+        return self.protocol.transport.write_eof()
+
+    def can_write_eof(self) -> bool:
+        return self.protocol.transport.can_write_eof()
+
+    def abort(self) -> None:
+        return self.protocol.transport.abort()
