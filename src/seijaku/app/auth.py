@@ -1,4 +1,5 @@
-import time
+import logging
+from datetime import UTC, datetime
 from secrets import token_bytes
 from typing import Annotated
 
@@ -18,12 +19,14 @@ CredentialsDependency = Annotated[HTTPAuthorizationCredentials, Depends(HTTPBear
 
 JWT_SECRET_LENGTH = 32
 
+logger = logging.getLogger(__name__)
+
 
 class SessionData(BaseModel):
-    user_id: int = Field(alias="sub")
+    uid: int
+    username: str = Field(alias="sub")
     role: UserRoles = Field(alias="role")
-    username: str
-    exp: int
+    exp: datetime
 
 
 class UnauthorizedError(HTTPException):
@@ -38,13 +41,12 @@ class UnauthorizedError(HTTPException):
 async def authentication_dependency(
     credentials: CredentialsDependency,
     session: DatabaseSessionDependency,
-    settings: SettingsDependency,
 ):
     try:
         user_id: int = jwt.decode(
             credentials.credentials,
             options={"verify_signature": False},
-        )["sub"]
+        )["uid"]
     except (jwt.PyJWTError, KeyError) as e:
         raise UnauthorizedError("Invalid token") from e
     result = await session.scalars(sa.select(Users).filter(Users.id_ == user_id))
@@ -56,19 +58,21 @@ async def authentication_dependency(
                 credentials.credentials,
                 user.jwt_secret,
                 algorithms=["HS256"],
+                subject=user.username,
             )
         )
     except (jwt.PyJWTError, ValidationError) as e:
+        logger.debug("Token validation failed for user %r, error: %r", user.username, e)
         raise UnauthorizedError("Token validation failed") from e
-    if full_token.exp + settings.session_expire < time.time():
-        raise UnauthorizedError("Token expired")
     return full_token
 
 
 UserSessionDependency = Annotated[SessionData, Depends(authentication_dependency)]
 
 
-async def login(username: str, password: str, session: AsyncSession):
+async def login(
+    username: str, password: str, session: AsyncSession, settings: SettingsDependency
+):
     result = await session.scalars(sa.select(Users).filter(Users.username == username))
     user = result.first()
     if user is None:
@@ -78,10 +82,10 @@ async def login(username: str, password: str, session: AsyncSession):
     if user.password != password:
         raise UnauthorizedError("Password is incorrect")
     data = SessionData(
-        sub=user.id_,
+        uid=user.id_,
+        sub=user.username,
         role=user.role,
-        username=user.username,
-        exp=int(time.time()),
+        exp=datetime.now(UTC) + settings.session_expire,
     )
     return data, jwt.encode(
         data.model_dump(by_alias=True),
@@ -90,7 +94,7 @@ async def login(username: str, password: str, session: AsyncSession):
     )
 
 
-async def logout(username: str, session: AsyncSession):
+async def rotate_session(username: str, session: AsyncSession):
     new_secret = token_bytes(JWT_SECRET_LENGTH)
     await session.execute(
         sa.update(Users).where(Users.username == username).values(jwt_secret=new_secret)

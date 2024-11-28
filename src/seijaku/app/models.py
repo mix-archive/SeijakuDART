@@ -7,6 +7,11 @@ class BaseSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserCreation(BaseSchema):
+    username: str
+    password: str
+
+
 class SessionCreation(BaseSchema):
     username: str
     password: str
