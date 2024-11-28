@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
 from .config import SettingsDependency
-from .db.models import UserRoles, Users
-from .db.session import DatabaseSessionDependency
+from .db import DatabaseSessionDependency, UserRoles, Users
 
 CredentialsDependency = Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer())]
 

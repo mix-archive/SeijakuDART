@@ -6,34 +6,17 @@ import time
 from collections.abc import Callable
 from enum import IntEnum, auto
 from functools import cached_property
-from typing import NamedTuple, cast
+from typing import cast
 
 from cryptography.hazmat.decrepit.ciphers.algorithms import ARC4
 from cryptography.hazmat.primitives.ciphers import Cipher
 from fastcrc import crc64
 
+from ..utils import AddressTuple
+
 TAG_SIZE = 8
 
 logger = logging.getLogger(__name__)
-
-
-class AddressTuple(NamedTuple):
-    host: str
-    port: int
-
-    @classmethod
-    def from_transport(cls, transport: asyncio.Transport):
-        host, port, *_ = transport.get_extra_info("peername")
-        return cls(host, port)
-
-    @property
-    def is_ipv6(self) -> bool:
-        return ":" in self.host
-
-    def __str__(self) -> str:
-        if self.is_ipv6 and not self.host.startswith("["):
-            return f"[{self.host}]:{self.port}"
-        return f"{self.host}:{self.port}"
 
 
 class ClientProtocolState(IntEnum):
@@ -52,7 +35,7 @@ class ControlServerProtocol(asyncio.Protocol):
         self.sub_protocol = protocol_factory()
         self.sub_transport: ControlClientTransport | None = None
 
-        # returns dict[client_name, encryption_key]
+        # returns dict[client_id, encryption_key]
         self.list_encryption_keys = list_encryption_keys
         self.client_time_tolerance = client_time_tolerance
         self.state = ClientProtocolState.ESTABLISHING

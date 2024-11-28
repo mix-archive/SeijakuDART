@@ -11,7 +11,8 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from ..client.compile import compile_client
+from ..client import compile_client
+from ..utils import PortNumber
 from .auth import UserSessionDependency, login, require_role, rotate_session
 from .config import SettingsDependency
 from .db import Clients, DatabaseSessionDependency, UserRoles, Users
@@ -102,7 +103,7 @@ async def download_client_binary(
     db: DatabaseSessionDependency,
     shell: str = "/bin/sh",
     reverse_host: str = "127.0.0.1",
-    reverse_port: int = 2333,
+    reverse_port: PortNumber = 2333,
     upx: bool = False,
 ):
     client = await db.scalars(

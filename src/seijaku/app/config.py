@@ -9,12 +9,12 @@ from fastapi import Depends
 from pydantic import Field, IPvAnyAddress
 from pydantic_settings import BaseSettings, CliImplicitFlag, SettingsConfigDict
 
+from ..utils import PortNumber
+
 LogLevels = StrEnum(
     "LogLevels",
     list(getLevelNamesMapping().keys()),
 )
-
-PortNumber = Annotated[int, Field(gt=0, lt=65536)]
 
 
 class Settings(BaseSettings):

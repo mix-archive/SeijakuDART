@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from collections.abc import Awaitable
 from datetime import UTC
 from functools import cache
 from typing import Annotated, cast
@@ -10,9 +9,8 @@ from anyio import create_memory_object_stream
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from fastapi import Depends
 
-from ..client.protocol import AddressTuple
-from .db.models import Clients
-from .db.session import DatabaseSessionManager, SessionManagerDependency
+from ..utils import AddressTuple, create_background_task
+from .db import Clients, DatabaseSessionManager, SessionManagerDependency
 
 MAX_BUFFER_SIZE = 1024
 
@@ -67,16 +65,6 @@ def connections_manager_factory(manager: SessionManagerDependency):
 ConnectionsManagerDependency = Annotated[
     ConnectionsManager, Depends(connections_manager_factory)
 ]
-
-
-def create_background_task[T](
-    coro: Awaitable[T],
-    background_tasks: set[asyncio.Task] = set(),  # noqa: B006
-) -> asyncio.Task[T]:
-    task = asyncio.ensure_future(coro)
-    background_tasks.add(task)
-    task.add_done_callback(background_tasks.discard)
-    return task
 
 
 class ClientControlProtocol(asyncio.Protocol):
