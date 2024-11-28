@@ -14,6 +14,8 @@ from ..client.protocol import AddressTuple
 from .db.models import Clients
 from .db.session import DatabaseSessionManager, SessionManagerDependency
 
+MAX_BUFFER_SIZE = 1024
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,9 +35,9 @@ class ConnectionsManager:
 
     async def init_encryption_keys(self):
         async with self.session_manager.connect() as connection:
-            clients = await connection.scalars(sa.select(Clients))
+            clients = await connection.execute(sa.select(Clients))
             self.cached_encryption_keys.update(
-                {str(client.id_): client.encrypt_key for client in clients}
+                {str(client.id_): client.encrypt_key for client in clients.all()}
             )
         logger.info("Initialized %d encryption keys", len(self.cached_encryption_keys))
 
@@ -86,8 +88,8 @@ class ClientControlProtocol(asyncio.Protocol):
         self.client_id = transport.get_extra_info("name")
         self.peername = transport.get_extra_info("peername")
 
-        self.send_stream, recv = create_memory_object_stream[bytes]()
-        send, self.recv_stream = create_memory_object_stream[bytes]()
+        self.send_stream, recv = create_memory_object_stream[bytes](MAX_BUFFER_SIZE)
+        send, self.recv_stream = create_memory_object_stream[bytes](MAX_BUFFER_SIZE)
 
         if existing_connection := self.manager.connections.pop(self.client_id, None):
             logger.warning(
