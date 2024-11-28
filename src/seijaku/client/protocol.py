@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from enum import IntEnum, auto
 from functools import cached_property
-from typing import cast
+from typing import NamedTuple, cast
 
 from cryptography.hazmat.decrepit.ciphers.algorithms import ARC4
 from cryptography.hazmat.primitives.ciphers import Cipher
@@ -17,18 +17,29 @@ TAG_SIZE = 8
 logger = logging.getLogger(__name__)
 
 
+class AddressTuple(NamedTuple):
+    host: str
+    port: int
+
+    @classmethod
+    def from_transport(cls, transport: asyncio.Transport):
+        host, port, *_ = transport.get_extra_info("peername")
+        return cls(host, port)
+
+    @property
+    def is_ipv6(self) -> bool:
+        return ":" in self.host
+
+    def __str__(self) -> str:
+        if self.is_ipv6 and not self.host.startswith("["):
+            return f"[{self.host}]:{self.port}"
+        return f"{self.host}:{self.port}"
+
+
 class ClientProtocolState(IntEnum):
     ESTABLISHING = auto()
     HANDSHAKE = auto()
     CONNECTED = auto()
-
-
-class SubProtocolError(RuntimeError):
-    pass
-
-
-class InvalidHandshakeError(ValueError):
-    pass
 
 
 class ControlServerProtocol(asyncio.Protocol):
@@ -60,27 +71,27 @@ class ControlServerProtocol(asyncio.Protocol):
         return self.cipher.decryptor()
 
     @property
-    def peername(self) -> tuple[str, int]:
-        return self.transport.get_extra_info("peername")
-
-    @property
-    def sockname(self) -> tuple[str, int]:
-        return self.transport.get_extra_info("sockname")
+    def peername(self):
+        return AddressTuple.from_transport(self.transport)
 
     def connection_made(self, transport):
         self.transport = cast(asyncio.Transport, transport)
         self.state = ClientProtocolState.HANDSHAKE
-        logger.info("Connection made from %s:%d", *self.peername)
+        logger.info("Connection made from %s", self.peername)
 
     def _try_sub_protocol[**P, R](
         self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs
-    ) -> R:
+    ) -> R | None:
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            logger.exception("Error occurred in sub protocol method %r", func.__name__)
+            logger.exception(
+                "Error occurred in sub protocol method %r",
+                getattr(func, "__name__", func),
+            )
             self.sub_protocol.connection_lost(e)
-            raise SubProtocolError from e
+            self.transport.close()
+        return
 
     def _check_handshake(self, tag: bytes):
         tag_value = int.from_bytes(tag, "big")
@@ -94,20 +105,26 @@ class ControlServerProtocol(asyncio.Protocol):
         ):
             if crc64.ecma_182(f"{key}{client_time}".encode()) == tag_value:
                 return name, key, client_time
-        raise InvalidHandshakeError("Invalid handshake tag")
+        return
 
     def data_received(self, data):
         if self.state is self.state.ESTABLISHING or self.transport is None:
             raise ValueError("Connection not established")
 
         if self.state is self.state.HANDSHAKE:
-            if len(data) < TAG_SIZE:
-                raise InvalidHandshakeError("Invalid handshake tag")
             tag, data = data[:TAG_SIZE], data[TAG_SIZE:]
-            name, key, client_time = self._check_handshake(tag)
+            if (
+                len(tag) < TAG_SIZE
+                or (handshake_info := self._check_handshake(tag)) is None
+            ):
+                logging.warning("Invalid handshake from %s detected", self.peername)
+                self.transport.close()
+                return
+
+            name, key, client_time = handshake_info
             logger.info(
-                "Handshake successful from %s:%d as %r at %s",
-                *self.peername,
+                "Handshake successful from %s as %r at %s",
+                self.peername,
                 name,
                 time.ctime(client_time),
             )
@@ -118,7 +135,6 @@ class ControlServerProtocol(asyncio.Protocol):
             self.sub_transport = ControlClientTransport(
                 {
                     "peername": self.peername,
-                    "sockname": self.sockname,
                     "name": name,
                     "key": key,
                 }
@@ -129,7 +145,7 @@ class ControlServerProtocol(asyncio.Protocol):
         if not data:
             return
 
-        logger.debug("Received %d bytes from %s:%d", len(data), *self.peername)
+        logger.debug("Received %d bytes from %s", len(data), self.peername)
         decrypted = self.decryptor.update(data)
         self._try_sub_protocol(self.sub_protocol.data_received, decrypted)
 
@@ -140,23 +156,17 @@ class ControlServerProtocol(asyncio.Protocol):
         return self._try_sub_protocol(self.sub_protocol.resume_writing)
 
     def eof_received(self) -> bool | None:
-        logger.debug("EOF received from %s:%d", *self.peername)
+        logger.debug("EOF received from %s", self.peername)
         return self._try_sub_protocol(self.sub_protocol.eof_received)
 
     def connection_lost(self, exc):
         with contextlib.suppress(Exception):
             self.sub_protocol.connection_lost(None)
 
-        match exc:
-            case SubProtocolError() | None:
-                pass
-            case InvalidHandshakeError():
-                logger.warning("Invalid handshake from %s:%d detected", *self.peername)
-            case _:
-                logger.exception(
-                    "Unexpected error occurred from %s:%d", *self.peername, exc_info=exc
-                )
-        logger.info("Connection lost from %s:%d", *self.peername)
+        if exc:
+            logger.warning("Connection lost from %s: %s", self.peername, exc)
+        else:
+            logger.info("Connection lost from %s", self.peername)
 
         if self.sub_transport:
             self.sub_transport.close()

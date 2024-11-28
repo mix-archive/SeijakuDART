@@ -10,6 +10,7 @@ from anyio import create_memory_object_stream
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from fastapi import Depends
 
+from ..client.protocol import AddressTuple
 from .db.models import Clients
 from .db.session import DatabaseSessionManager, SessionManagerDependency
 
@@ -42,19 +43,18 @@ class ConnectionsManager:
         return self.cached_encryption_keys.copy()
 
     async def update_connection_last_status(
-        self, client_id: str, peer_info: tuple[str, int]
+        self, client_id: str, peer_info: AddressTuple
     ):
-        host, port = peer_info
         try:
             async with self.session_manager.connect() as connection:
                 await connection.execute(
                     sa.update(Clients)
                     .where(Clients.id_ == client_id)
-                    .values(last_seen=sa.func.now(UTC), last_from=f"{host}:{port}")
+                    .values(last_seen=sa.func.now(UTC), last_from=str(peer_info))
                 )
         except Exception:
             logger.exception("Failed to update last seen for %s", client_id)
-        logger.debug("Updated last seen for %r to %s:%d", client_id, host, port)
+        logger.debug("Updated last seen for %r to %s", client_id, peer_info)
 
 
 @cache
@@ -91,9 +91,9 @@ class ClientControlProtocol(asyncio.Protocol):
 
         if existing_connection := self.manager.connections.pop(self.client_id, None):
             logger.warning(
-                "Closing duplicate connection of %s from %s:%d",
+                "Closing duplicate connection of %s from %s",
                 self.client_id,
-                *self.peername,
+                self.peername,
             )
             protocol, _, _ = existing_connection
             protocol.connection_lost(None)

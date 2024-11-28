@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
         reuse_address=True,
         reuse_port=True,
     )
-    logger.info("C2 server listening on %s:%d", settings.c2_host, settings.c2_port)
+    logger.info("C2 server listening on %r:%d", settings.c2_host, settings.c2_port)
     async with server, session_manager:
         await server.start_serving()
         yield
