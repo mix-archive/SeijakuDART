@@ -1,3 +1,5 @@
+import logging
+from rich.logging import RichHandler
 import uvicorn
 
 
@@ -5,9 +7,10 @@ def main():
     from .app import package_name, settings_dependency
 
     settings = settings_dependency()
+    log_level = logging.getLevelNamesMapping()[settings.log_level.upper()]
+
     uvicorn_log_config = {
         "version": 1,
-        "disable_existing_loggers": False,
         "handlers": {
             "default": {
                 "formatter": "default",
@@ -22,8 +25,27 @@ def main():
                 "style": "%",
             }
         },
-        "root": {"level": settings.log_level.upper(), "handlers": ["default"]},
+        "loggers": {
+            "uvicorn": {
+                "level": "INFO",
+                "handlers": ["default"],
+                "propagate": False,
+            },
+            package_name: {
+                "level": log_level,
+                "handlers": ["default"],
+                "propagate": False,
+            },
+        },
+        "root": {"handlers": ["default"]},
     }
+
+    if log_level < logging.INFO:
+        uvicorn_log_config["loggers"]["sqlalchemy.engine"] = {
+            "level": log_level,
+            "handlers": ["default"],
+            "propagate": False,
+        }
 
     uvicorn.run(
         f"{package_name}:app",
