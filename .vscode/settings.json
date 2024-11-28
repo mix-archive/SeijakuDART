@@ -18,7 +18,9 @@
     "cSpell.words": [
         "decryptor",
         "encryptor",
+        "peername",
         "seijaku",
-        "sessionmaker"
+        "sessionmaker",
+        "sockname"
     ],
 }
