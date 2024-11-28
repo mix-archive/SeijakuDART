@@ -3,13 +3,19 @@ from datetime import UTC, datetime
 from enum import StrEnum, auto
 
 import sqlalchemy as sa
-from sqlalchemy.orm import Mapped, declarative_base, mapped_column, relationship
-from sqlalchemy_utils import PasswordType, StringEncryptedType
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    declarative_base,
+    mapped_column,
+    relationship,
+)
+from sqlalchemy_utils import Password, PasswordType, StringEncryptedType
 from sqlalchemy_utils.types.encrypted.encrypted_type import AesGcmEngine
 
-from seijaku.app.config import settings_dependency
+from ..config import settings_dependency
 
-Base = declarative_base()
+Base: type[DeclarativeBase] = declarative_base()
 
 
 class GUID(sa.TypeDecorator):
@@ -68,7 +74,7 @@ class Clients(Base):
     owner_id: Mapped[int] = mapped_column(
         sa.ForeignKey("users.id_"), nullable=False, index=True
     )
-    owner: Mapped["Users"] = mapped_column(nullable=False, back_populates="clients")
+    owner: Mapped["Users"] = relationship(back_populates="clients")
 
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=sa.func.now(UTC)
@@ -93,7 +99,7 @@ class Users(Base):
     id_: Mapped[int] = mapped_column(primary_key=True, autoincrement=True, index=True)
     role: Mapped[UserRoles] = mapped_column(nullable=False, index=True)
     username: Mapped[str] = mapped_column(nullable=False, index=True, unique=True)
-    password: Mapped[str | None] = mapped_column(PasswordType(schemes=["argon2"]))
+    password: Mapped[Password] = mapped_column(PasswordType(schemes=["argon2"]))
     jwt_secret: Mapped[bytes | None] = mapped_column(
         StringEncryptedType(
             sa.Unicode,

@@ -1,4 +1,5 @@
 from .models import GUID as GUID
+from .models import Base as Base
 from .models import Clients as Clients
 from .models import Users as Users
 from .session import DatabaseSessionDependency as DatabaseSessionDependency

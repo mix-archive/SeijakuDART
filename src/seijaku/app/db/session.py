@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from seijaku.app.config import settings_dependency
+from ..config import settings_dependency
 
 
 class DatabaseSessionManager:
