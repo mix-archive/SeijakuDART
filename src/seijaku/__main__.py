@@ -1,4 +1,5 @@
 import logging
+import os
 
 import uvicorn
 
@@ -11,20 +12,6 @@ def main():
 
     uvicorn_log_config = {
         "version": 1,
-        "handlers": {
-            "default": {
-                "formatter": "default",
-                "class": "rich.logging.RichHandler",
-                "rich_tracebacks": True,
-            }
-        },
-        "formatters": {
-            "default": {
-                "format": "%(message)s",
-                "datefmt": "[%X]",
-                "style": "%",
-            }
-        },
         "loggers": {
             "uvicorn": {
                 "level": "INFO",
@@ -39,6 +26,45 @@ def main():
         },
         "root": {"handlers": ["default"]},
     }
+
+    uvicorn_log_config.update(
+        {
+            "handlers": {
+                "default": {
+                    "formatter": "default",
+                    "class": "rich.logging.RichHandler",
+                    "rich_tracebacks": True,
+                }
+            },
+            "formatters": {
+                "default": {
+                    "format": "%(message)s",
+                    "datefmt": "[%X]",
+                    "style": "%",
+                }
+            },
+        }
+        if os.isatty(0)
+        else {
+            "handlers": {
+                "default": {
+                    "formatter": "default",
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout",
+                }
+            },
+            "formatters": {
+                "default": {
+                    "format": (
+                        "%(asctime)s %(levelname)-8s"
+                        "%(name)s:%(funcName)s:%(lineno)d - %(message)s"
+                    ),
+                    "datefmt": "[%x %X]",
+                    "style": "%",
+                }
+            },
+        }
+    )
 
     if log_level < logging.INFO:
         uvicorn_log_config["loggers"]["sqlalchemy.engine"] = {
