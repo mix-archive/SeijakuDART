@@ -6,6 +6,7 @@ from secrets import token_urlsafe
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, Response, WebSocket
 from fastapi.responses import HTMLResponse
+from sqlalchemy import orm
 from starlette.status import (
     HTTP_204_NO_CONTENT,
     HTTP_403_FORBIDDEN,
@@ -30,9 +31,11 @@ from .models import (
     ClientCreation,
     ClientResponse,
     ListClientResponse,
+    ListUserResponse,
     SessionCreation,
     SessionCreationResponse,
     UserCreation,
+    UserCreationResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,16 +53,23 @@ async def create_session(
     return SessionCreationResponse(session_data=session, token=token)
 
 
+@router.get("/session/me")
+async def get_session(
+    user: UserSessionDependency, db: DatabaseSessionDependency
+) -> ListUserResponse:
+    return await get_user(user.uid, db)
+
+
 @router.delete("/session", response_model=None, status_code=HTTP_204_NO_CONTENT)
 async def delete_session(user: UserSessionDependency, db: DatabaseSessionDependency):
     await rotate_session(user.username, db)
 
 
-@router.put("/admin/init")
+@router.put("/user/init")
 async def create_initial_user(
     model: UserCreation, db: DatabaseSessionDependency, settings: SettingsDependency
 ) -> SessionCreationResponse:
-    result = await db.scalars(sa.func.count(Users.id_))
+    result = await db.scalars(sa.func.count(Users.role == UserRoles.admin))
     if result.first():
         raise HTTPException(HTTP_403_FORBIDDEN, "Admin user already exists")
     await db.execute(
@@ -68,6 +78,83 @@ async def create_initial_user(
     await rotate_session(model.username, db)
     session, token = await login(model.username, model.password, db, settings)
     return SessionCreationResponse(session_data=session, token=token)
+
+
+@router.put("/user", dependencies=[require_role(UserRoles.admin)])
+async def create_user(
+    model: UserCreation, db: DatabaseSessionDependency
+) -> UserCreationResponse:
+    result = await db.execute(
+        sa.insert(Users)
+        .values(**model.model_dump(), role=UserRoles.user)
+        .returning(Users)
+    )
+    if (result := result.first()) is None:
+        raise HTTPException(HTTP_500_INTERNAL_SERVER_ERROR, "Failed to create user")
+    user, *_ = result.tuple()
+    await rotate_session(model.username, db)
+    await db.refresh(user)
+    return UserCreationResponse.model_validate(user)
+
+
+@router.get("/user", dependencies=[require_role(UserRoles.admin)])
+async def list_users(
+    db: DatabaseSessionDependency,
+) -> list[ListUserResponse]:
+    users = await db.scalars(sa.select(Users).options(orm.joinedload(Users.clients)))
+    return [ListUserResponse.model_validate(user) for user in users.unique()]
+
+
+@router.delete(
+    "/user/{user_id}",
+    dependencies=[require_role(UserRoles.admin)],
+    status_code=HTTP_204_NO_CONTENT,
+)
+async def delete_user(
+    user_id: int,
+    db: DatabaseSessionDependency,
+):
+    result = await db.scalars(sa.select(Users).where(Users.id_ == user_id))
+    if (user := result.first()) is None:
+        raise HTTPException(HTTP_404_NOT_FOUND, "User not found")
+    await db.delete(user)
+    return
+
+
+@router.get("/user/{user_id}", dependencies=[require_role(UserRoles.admin)])
+async def get_user(
+    user_id: int,
+    db: DatabaseSessionDependency,
+) -> ListUserResponse:
+    user = await db.scalars(
+        sa.select(Users)
+        .where(Users.id_ == user_id)
+        .options(orm.joinedload(Users.clients))
+    )
+    if (user := user.first()) is None:
+        raise HTTPException(HTTP_404_NOT_FOUND, "User not found")
+    return ListUserResponse.model_validate(user)
+
+
+@router.delete(
+    "/user/{user_id}/session",
+    dependencies=[require_role(UserRoles.admin)],
+    status_code=HTTP_204_NO_CONTENT,
+)
+async def delete_user_session(
+    user_id: int,
+    db: DatabaseSessionDependency,
+):
+    result = await db.execute(
+        sa.update(Users)
+        .where(Users.id_ == user_id)
+        .values(jwt_secret=None)
+        .returning(Users.username)
+    )
+    if (username := result.scalar()) is None:
+        raise HTTPException(HTTP_404_NOT_FOUND, "User not found")
+    await rotate_session(username, db)
+    return
 
 
 @router.put("/client", dependencies=[require_role(UserRoles.user)])
@@ -100,13 +187,17 @@ async def list_clients(
     connections_manager: ConnectionsManagerDependency,
 ) -> list[ListClientResponse]:
     stmt = sa.select(Clients)
-    if user.role < UserRoles.admin:
+    if user.role > UserRoles.admin:
         stmt = stmt.filter(Clients.owner_id == user.uid)
-    clients = await db.scalars(stmt)
+    clients = await db.scalars(
+        stmt.order_by(Clients.last_seen.desc()).options(orm.joinedload(Clients.owner))
+    )
     return [
         ListClientResponse.model_validate(
             {
                 "online": client.id_ in connections_manager.connections,
+                "owner_id": client.owner.id_,
+                "owner_name": client.owner.username,
                 "info": client,
             }
         )
@@ -130,7 +221,7 @@ async def download_client_binary(
     upx: bool = False,
 ):
     stmt = sa.select(Clients).where(Clients.id_ == client_id)
-    if user.role < UserRoles.admin:
+    if user.role > UserRoles.admin:
         stmt = stmt.where(Clients.owner_id == user.uid)
     client = await db.scalars(stmt)
     if (client := client.first()) is None:
@@ -180,7 +271,7 @@ async def connect_client(
     if user.role > UserRoles.user:
         raise HTTPException(HTTP_403_FORBIDDEN, "Unauthorized access")
     stmt = sa.select(Clients).where(Clients.id_ == client_id)
-    if user.role < UserRoles.admin:
+    if user.role > UserRoles.admin:
         stmt = stmt.where(Clients.owner_id == user.uid)
     client = await db.scalars(stmt)
     if (client := client.first()) is None:
@@ -217,7 +308,7 @@ async def delete_client(
     connections_manager: ConnectionsManagerDependency,
 ):
     stmt = sa.delete(Clients).where(Clients.id_ == client_id)
-    if user.role < UserRoles.admin:
+    if user.role > UserRoles.admin:
         stmt = stmt.where(Clients.owner_id == user.uid)
     result = await db.execute(stmt)
     if result.rowcount == 0:

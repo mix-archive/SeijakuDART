@@ -110,7 +110,7 @@ class Users(Base):
         )
     )
 
-    clients: Mapped[list[Clients]] = relationship()
+    clients: Mapped[list[Clients]] = relationship(cascade="all, delete")
 
     created_at: Mapped[datetime] = mapped_column(
         nullable=False, default=sa.func.now(UTC)

@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from .auth import SessionData
+from .db.models import UserRoles
 
 
 class BaseSchema(BaseModel):
@@ -13,6 +14,14 @@ class BaseSchema(BaseModel):
 class UserCreation(BaseSchema):
     username: str
     password: str
+
+
+class UserCreationResponse(BaseSchema):
+    id_: int
+    username: str
+    role: UserRoles
+    created_at: datetime
+    updated_at: datetime
 
 
 class SessionCreation(BaseSchema):
@@ -34,9 +43,16 @@ class ClientResponse(BaseSchema):
     client_name: str
     last_seen: datetime | None
     last_from: str | None
-    owner_id: int
+    created_at: datetime
+    updated_at: datetime
 
 
 class ListClientResponse(BaseSchema):
     online: bool
+    owner_id: int
+    owner_name: str
     info: ClientResponse
+
+
+class ListUserResponse(UserCreationResponse):
+    clients: list[ClientResponse]
