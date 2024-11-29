@@ -1,17 +1,22 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import cache
 from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from starlette.status import HTTP_409_CONFLICT
 
 from ..config import settings_dependency
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseSessionManager:
@@ -54,6 +59,11 @@ class DatabaseSessionManager:
         try:
             yield session
             await session.commit()
+        except IntegrityError as e:
+            await session.rollback()
+            logger.warning("Error executing statement=%r: %r", e.statement, e.orig)
+            logger.debug("Integrity error params=%r", e.params)
+            raise HTTPException(HTTP_409_CONFLICT, detail=str(e.orig)) from e
         except Exception:
             await session.rollback()
             raise
