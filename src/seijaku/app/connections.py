@@ -1,8 +1,9 @@
 import asyncio
 import logging
+import uuid
 from datetime import UTC
 from functools import cache
-from typing import Annotated, cast
+from typing import Annotated, ClassVar, cast
 
 import sqlalchemy as sa
 from anyio import create_memory_object_stream
@@ -26,16 +27,18 @@ type ConnectionDuplex = tuple[
 
 
 class ConnectionsManager:
+    cached_encryption_keys: ClassVar[dict[uuid.UUID, str]] = {}
+    connections: ClassVar[dict[uuid.UUID, ConnectionDuplex]] = {}
+
     def __init__(self, session_manager: DatabaseSessionManager):
         self.session_manager = session_manager
-        self.connections: dict[str, ConnectionDuplex] = {}
-        self.cached_encryption_keys: dict[str, str] = {}
 
     async def init_encryption_keys(self):
         async with self.session_manager.connect() as connection:
             clients = await connection.execute(sa.select(Clients))
-            self.cached_encryption_keys.update(
-                {str(client.id_): client.encrypt_key for client in clients.all()}
+            type(self).cached_encryption_keys.clear()
+            type(self).cached_encryption_keys.update(
+                {client.id_: client.encrypt_key for client in clients.all()}
             )
         logger.info("Initialized %d encryption keys", len(self.cached_encryption_keys))
 
@@ -73,13 +76,14 @@ class ClientControlProtocol(asyncio.Protocol):
 
     def connection_made(self, transport) -> None:
         self.transport = cast(asyncio.WriteTransport, transport)
-        self.client_id = transport.get_extra_info("name")
+        self.client_id = transport.get_extra_info("client")
         self.peername = transport.get_extra_info("peername")
 
         self.send_stream, recv = create_memory_object_stream[bytes](MAX_BUFFER_SIZE)
         send, self.recv_stream = create_memory_object_stream[bytes](MAX_BUFFER_SIZE)
 
-        if existing_connection := self.manager.connections.pop(self.client_id, None):
+        connections = type(self.manager).connections
+        if existing_connection := connections.pop(self.client_id, None):
             logger.warning(
                 "Closing duplicate connection of %s from %s",
                 self.client_id,
@@ -87,7 +91,7 @@ class ClientControlProtocol(asyncio.Protocol):
             )
             protocol, _, _ = existing_connection
             protocol.connection_lost(None)
-        self.manager.connections[self.client_id] = (self, send, recv)
+        connections[self.client_id] = (self, send, recv)
 
         create_background_task(
             self.manager.update_connection_last_status(self.client_id, self.peername)

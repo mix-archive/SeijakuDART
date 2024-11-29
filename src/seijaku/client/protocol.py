@@ -3,6 +3,7 @@ import contextlib
 import itertools
 import logging
 import time
+import uuid
 from collections.abc import Callable
 from enum import IntEnum, auto
 from functools import cached_property
@@ -29,7 +30,7 @@ class ControlServerProtocol(asyncio.Protocol):
     def __init__(
         self,
         protocol_factory: Callable[[], asyncio.Protocol],
-        list_encryption_keys: Callable[[], dict[str, str]],
+        list_encryption_keys: Callable[[], dict[uuid.UUID, str]],
         client_time_tolerance: int = 30,
     ):
         self.sub_protocol = protocol_factory()
@@ -118,7 +119,7 @@ class ControlServerProtocol(asyncio.Protocol):
             self.sub_transport = ControlClientTransport(
                 {
                     "peername": self.peername,
-                    "name": name,
+                    "client": name,
                     "key": key,
                 }
             )
