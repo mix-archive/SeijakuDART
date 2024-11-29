@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from importlib import metadata
 
 from fastapi import FastAPI
+from scalar_fastapi import get_scalar_api_reference
 
 from ..client.protocol import ControlServerProtocol
 from .api import router
@@ -42,9 +43,16 @@ async def lifespan(app: FastAPI):
 
 package_name, *_ = __name__.split(".")
 app = FastAPI(
-    title=package_name,
+    title=package_name.title(),
     version=metadata.version(package_name),
-    description=metadata.metadata(package_name).get("Summary", ""),
+    description=metadata.metadata(package_name)["summary"],
+    redoc_url=None,
+    docs_url=None,
     lifespan=lifespan,
 )
 app.include_router(router)
+
+
+@app.get("/scalar", include_in_schema=False)
+async def scalar_api_doc():
+    return get_scalar_api_reference(openapi_url=str(app.openapi_url), title=app.title)
