@@ -196,6 +196,9 @@ int main()
         // Close the master side of the pty
         close(master);
 
+        CHECK_ERROR(setsid());
+        CHECK_ERROR(ioctl(slave, TIOCSCTTY, 0));
+
         CHECK_ERROR(dup2(slave, STDIN_FILENO));
         CHECK_ERROR(dup2(slave, STDOUT_FILENO));
         CHECK_ERROR(dup2(slave, STDERR_FILENO));
