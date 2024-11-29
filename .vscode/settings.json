@@ -23,4 +23,5 @@
         "sessionmaker",
         "sockname"
     ],
+    "basedpyright.analysis.diagnosticMode": "workspace",
 }
