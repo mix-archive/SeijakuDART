@@ -6,14 +6,14 @@ authors = [{ name = "Mix", email = "32300164+mnixry@users.noreply.github.com" }]
 dependencies = [
     "fastapi[standard]>=0.115.5",
     "rich>=13.9.4",
-    "cryptography>=43.0.3",
+    "cryptography>=44.0.0",
     "fastcrc>=0.3.2",
     "anyio>=4.6.2.post1",
     "pydantic-settings>=2.6.1",
     "sqlalchemy[asyncio]>=2.0.36",
     "sqlalchemy-utils[encrypted,password]>=0.41.2",
     "passlib[argon2]>=1.7.4",
-    "pyjwt>=2.10.0",
+    "pyjwt>=2.10.1",
     "aiosqlite>=0.20.0",
     "scalar-fastapi>=1.0.3",
 ]
@@ -25,11 +25,10 @@ license = { text = "AGPL-3.0-or-later" }
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
-[tool.pdm]
-distribution = true
-
 [dependency-groups]
-dev = ["ruff>=0.8.0"]
+dev = [
+    "ruff>=0.8.1",
+]
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -66,3 +65,7 @@ lint.ignore = [
     "TRY003", # Avoid specifying long messages outside the exception class
 ]
 target-version = "py312"
+
+[tool.pdm]
+distribution = true
+
