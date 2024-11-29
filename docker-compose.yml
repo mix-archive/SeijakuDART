@@ -10,3 +10,4 @@ services:
       - .env
     volumes:
       - ./db.sqlite3:/app/db.sqlite3
+    init: true
