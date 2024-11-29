@@ -1,0 +1,12 @@
+name: seijaku
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+      - "2333:2333"
+    env_file:
+      - .env
+    volumes:
+      - ./db.sqlite3:/app/db.sqlite3
