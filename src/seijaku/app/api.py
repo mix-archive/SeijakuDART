@@ -1,9 +1,11 @@
 import logging
 import uuid
+from pathlib import Path
 from secrets import token_urlsafe
 
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, Response, WebSocket
+from fastapi.responses import HTMLResponse
 from starlette.status import (
     HTTP_204_NO_CONTENT,
     HTTP_403_FORBIDDEN,
@@ -153,6 +155,20 @@ async def download_client_binary(
     )
 
 
+@router.get(
+    "/client/{client_id}/connect",
+    name="client_front_page",
+    response_class=HTMLResponse,
+)
+async def connect_front_page(
+    client_id: uuid.UUID,
+    user: UserSessionQueryDependency,
+):
+    return HTMLResponse(
+        (Path(__file__).parent / "terminal.html").read_text(),
+    )
+
+
 @router.websocket("/client/{client_id}/connect")
 async def connect_client(
     client_id: uuid.UUID,
@@ -161,7 +177,7 @@ async def connect_client(
     connections_manager: ConnectionsManagerDependency,
     websocket: WebSocket,
 ):
-    if user.role < UserRoles.user:
+    if user.role > UserRoles.user:
         raise HTTPException(HTTP_403_FORBIDDEN, "Unauthorized access")
     stmt = sa.select(Clients).where(Clients.id_ == client_id)
     if user.role < UserRoles.admin:

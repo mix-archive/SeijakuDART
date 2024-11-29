@@ -5,7 +5,7 @@ from typing import Annotated
 
 import jwt
 import sqlalchemy as sa
-from fastapi import Depends, HTTPException, Query
+from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,11 +69,9 @@ async def authentication_dependency(
 
 UserSessionDependency = Annotated[SessionData, Depends(authentication_dependency)]
 
-CredentialsQueryDependency = Annotated[str, Query(alias="token")]
-
 
 async def authentication_from_query_dependency(
-    token: CredentialsQueryDependency,
+    token: str,
     session: DatabaseSessionDependency,
 ):
     return await authentication_dependency(
@@ -81,7 +79,7 @@ async def authentication_from_query_dependency(
     )
 
 
-type UserSessionQueryDependency = Annotated[
+UserSessionQueryDependency = Annotated[
     SessionData, Depends(authentication_from_query_dependency)
 ]
 

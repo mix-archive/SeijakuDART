@@ -113,3 +113,5 @@ class ClientControlProtocol(asyncio.Protocol):
         self.send_stream.close()
         self.recv_stream.close()
         self.transport.close()
+
+        type(self.manager).connections.pop(self.client_id, None)
