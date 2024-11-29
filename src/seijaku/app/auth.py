@@ -5,7 +5,7 @@ from typing import Annotated
 
 import jwt
 import sqlalchemy as sa
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,8 +13,6 @@ from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN
 
 from .config import SettingsDependency
 from .db import DatabaseSessionDependency, UserRoles, Users
-
-CredentialsDependency = Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer())]
 
 JWT_SECRET_LENGTH = 32
 
@@ -35,6 +33,9 @@ class UnauthorizedError(HTTPException):
             detail=detail,
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+CredentialsDependency = Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer())]
 
 
 async def authentication_dependency(
@@ -67,6 +68,22 @@ async def authentication_dependency(
 
 
 UserSessionDependency = Annotated[SessionData, Depends(authentication_dependency)]
+
+CredentialsQueryDependency = Annotated[str, Query(alias="token")]
+
+
+async def authentication_from_query_dependency(
+    token: CredentialsQueryDependency,
+    session: DatabaseSessionDependency,
+):
+    return await authentication_dependency(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), session
+    )
+
+
+type UserSessionQueryDependency = Annotated[
+    SessionData, Depends(authentication_from_query_dependency)
+]
 
 
 _cached_role_dependencies = {}

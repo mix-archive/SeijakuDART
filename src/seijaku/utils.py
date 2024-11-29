@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import AsyncIterator, Awaitable
 from typing import Annotated, NamedTuple
 
 from pydantic import Field
@@ -26,11 +26,20 @@ class AddressTuple(NamedTuple):
         host, port, *_ = transport.get_extra_info("peername")
         return cls(host, port)
 
-    @property
-    def is_ipv6(self) -> bool:
-        return ":" in self.host
-
     def __str__(self) -> str:
-        if self.is_ipv6 and not self.host.startswith("["):
+        if ":" in self.host and not self.host.startswith("["):
             return f"[{self.host}]:{self.port}"
         return f"{self.host}:{self.port}"
+
+
+async def join_async_streams[T](*streams: AsyncIterator[T]):
+    wait_tasks = {asyncio.ensure_future(anext(stream)): stream for stream in streams}
+    while wait_tasks:
+        done, _ = await asyncio.wait(wait_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if isinstance(task.exception(), StopAsyncIteration):
+                return
+            stream = wait_tasks.pop(task)
+            yield stream, task.result()
+            wait_tasks[asyncio.ensure_future(anext(stream))] = stream
+    return
