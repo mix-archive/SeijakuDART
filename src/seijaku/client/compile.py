@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from asyncio.subprocess import create_subprocess_exec
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -46,6 +47,8 @@ async def compile_client(
         "DAEMONIZE": 1,
     }
 
+    start_time = datetime.now()
+
     with TemporaryDirectory() as temp_dir:
         client_binary = Path(temp_dir) / "client"
 
@@ -60,12 +63,14 @@ async def compile_client(
         _, stderr = await result.communicate()
         if result.returncode:
             logger.error(
-                "Compiler exited with code %d: %s", result.returncode, stderr.decode()
+                "Compiler exited with code %d: %s",
+                result.returncode,
+                stderr.decode(errors="ignore").strip(),
             )
-            raise RuntimeError("Failed to compile client")
+            raise RuntimeError("Compiler exited with non-zero code", result.returncode)
 
         file_size = client_binary.stat().st_size
-        logger.info("Client compiled: %s (%d bytes)", client_binary, file_size)
+        logger.debug("Client compiled: %s (%d bytes)", client_binary, file_size)
 
         if upx:
             result = await create_subprocess_exec(
@@ -79,12 +84,14 @@ async def compile_client(
 
             if result.returncode:
                 logger.error(
-                    "UPX exited with code %d: %s", result.returncode, stderr.decode()
+                    "UPX exited with code %d: %s",
+                    result.returncode,
+                    stderr.decode(errors="ignore").strip(),
                 )
-                raise RuntimeError("Failed to compress client")
+                raise RuntimeError("UPX exited with non-zero code", result.returncode)
 
             compressed_size = client_binary.stat().st_size
-            logger.info(
+            logger.debug(
                 "Client compressed: %s (%d bytes, %.2f%%)",
                 client_binary,
                 compressed_size,
@@ -94,4 +101,9 @@ async def compile_client(
         async with await anyio.open_file(client_binary, "rb") as f:
             result = await f.read()
 
+    logger.info(
+        "Client compiled in %s, size: %d bytes",
+        datetime.now() - start_time,
+        len(result),
+    )
     return result
