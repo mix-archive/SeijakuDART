@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -5,7 +6,7 @@ from secrets import token_urlsafe
 
 import sqlalchemy as sa
 from fastapi import APIRouter, HTTPException, Response, WebSocket
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy import orm
 from starlette.status import (
     HTTP_204_NO_CONTENT,
@@ -30,6 +31,8 @@ from .db import Clients, DatabaseSessionDependency, UserRoles, Users
 from .models import (
     ClientCreation,
     ClientResponse,
+    HostCommandRequest,
+    HostCommandResponse,
     ListClientResponse,
     ListUserResponse,
     SessionCreation,
@@ -318,3 +321,50 @@ async def delete_client(
         protocol.connection_lost(None)
     await connections_manager.init_encryption_keys()
     return
+
+
+@router.post("/host/command", dependencies=[require_role(UserRoles.admin)])
+async def run_host_command(command: HostCommandRequest) -> HostCommandResponse:
+    process = await asyncio.subprocess.create_subprocess_shell(
+        command.command,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate(command.stdin)
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5)
+    except TimeoutError:
+        process.kill()
+    return HostCommandResponse(
+        status=process.returncode or 0,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+@router.get(
+    "/host/files/{file_path:path}",
+    response_class=FileResponse,
+    dependencies=[require_role(UserRoles.user)],
+)
+async def host_file_share(file_path: Path):
+    if not file_path.exists():
+        raise HTTPException(HTTP_404_NOT_FOUND, "File not found")
+    # check if path traversal attack is possible
+    if file_path != Path() and Path().resolve() not in file_path.resolve().parents:
+        raise HTTPException(HTTP_403_FORBIDDEN, "Forbidden path")
+    if file_path.is_dir():
+        return HTMLResponse(
+            "<ul>{}</ul>".format(
+                "".join(
+                    f'<li><a href="./{sub_path.name}">'
+                    + (sub_path.name + ("/" if sub_path.is_dir() else ""))
+                    + f"</a> - <code>{sub_path.stat().st_size}</code> bytes</li>"
+                    for sub_path in sorted(
+                        file_path.iterdir(), key=lambda p: (not p.is_dir(), p.name)
+                    )
+                )
+            ),
+        )
+    return FileResponse(file_path)

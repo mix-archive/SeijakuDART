@@ -1,13 +1,25 @@
 name: seijaku
 
+networks:
+  default:
+    driver_opts:
+      com.docker.network.bridge.name: br-seijaku
+
 services:
   app:
     build: .
     ports:
       - "8000:8000"
       - "2333:2333"
-    env_file:
-      - .env
-    volumes:
-      - ./db.sqlite3:/app/db.sqlite3
     init: true
+    networks:
+      default:
+        aliases:
+          - seijaku.local
+
+  operator:
+    image: ubuntu:latest
+    command: sleep infinity
+    init: true
+    networks:
+      - default

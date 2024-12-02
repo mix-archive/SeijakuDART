@@ -28,3 +28,26 @@ ENV PATH=/project/.venv/bin:$PATH
 WORKDIR /app
 USER app
 ENTRYPOINT [ "python", "-m", "seijaku" ]
+
+FROM runner AS exploitable
+
+USER root
+
+RUN apk add --no-cache su-exec
+
+COPY src/seijaku/app/db/models.py ./hint.py
+COPY ./challenge/exp.env ./.env
+COPY --chown=app:app ./challenge/exp.sqlite3 ./db.sqlite3
+
+COPY ./challenge/readflag.c ./tmp/readflag.c
+RUN --mount=type=cache,target=/root/.cache \
+    zig cc ./tmp/readflag.c -o ./readflag && \
+    chmod u+s ./readflag
+
+ENV FLAG=flag{this_is_a_fake_flag}
+ENTRYPOINT [ "/bin/sh", "-c", "\
+    echo -n $FLAG > /flag && \
+    unset FLAG && \
+    chown root:root /flag && \
+    chmod 400 /flag && \
+    exec su-exec app python -m seijaku" ]

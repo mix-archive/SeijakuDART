@@ -56,3 +56,14 @@ class ListClientResponse(BaseSchema):
 
 class ListUserResponse(UserCreationResponse):
     clients: list[ClientResponse]
+
+
+class HostCommandRequest(BaseSchema):
+    command: str
+    stdin: bytes | None = None
+
+
+class HostCommandResponse(BaseSchema):
+    status: int
+    stdout: bytes
+    stderr: bytes
