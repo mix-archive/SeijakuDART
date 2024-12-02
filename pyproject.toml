@@ -26,9 +26,7 @@ requires = ["pdm-backend"]
 build-backend = "pdm.backend"
 
 [dependency-groups]
-dev = [
-    "ruff>=0.8.1",
-]
+dev = ["ruff>=0.8.1", "dpkt>=1.9.8"]
 
 [tool.pyright]
 typeCheckingMode = "standard"
@@ -68,4 +66,3 @@ target-version = "py312"
 
 [tool.pdm]
 distribution = true
-
