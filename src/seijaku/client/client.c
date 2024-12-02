@@ -96,10 +96,11 @@ typedef struct rc4_state {
  * @param keylen key length
  */
 static void rc4_init(rc4_state *state, const char *key, int keylen) {
+  uint8_t j = 0;
   for (size_t i = 0; i < sizeof(state->s); i++)
     state->s[i] = i;
-  for (size_t i = 0, j = 0; i < sizeof(state->s); i++) {
-    j = j + state->s[i] + key[i % keylen];
+  for (size_t i = 0; i < sizeof(state->s); i++) {
+    j += state->s[i] + key[i % keylen];
     SWAP(state->s[i], state->s[j]);
   }
   state->i = 0;
@@ -115,7 +116,7 @@ static uint8_t rc4_next(rc4_state *state) {
   state->i++;
   state->j += state->s[state->i];
   SWAP(state->s[state->i], state->s[state->j]);
-  return state->s[state->s[state->i] + state->s[state->j]];
+  return state->s[(uint8_t)(state->s[state->i] + state->s[state->j])];
 }
 
 #define CRC64_ECMA_182_POLY 0x42F0E1EBA9EA3693ULL
