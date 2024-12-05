@@ -44,9 +44,9 @@ RUN --mount=type=cache,target=/root/.cache \
     zig cc ./tmp/readflag.c -o ./readflag && \
     chmod u+s ./readflag
 
-ENV FLAG=flag{this_is_a_fake_flag}
+ENV FLAG=this_is_a_fake_flag
 ENTRYPOINT [ "/bin/sh", "-c", "\
-    echo -n $FLAG > /flag && \
+    echo -n 'dart{'${FLAG}'}' > /flag && \
     unset FLAG && \
     chown root:root /flag && \
     chmod 400 /flag && \
